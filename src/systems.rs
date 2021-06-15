@@ -65,7 +65,7 @@ pub fn normal_system(
     mut to_instantiate: ResMut<ListToInstantiate>,
     mut query: Query<(Entity, &InstantiateProgress)>,
 ) {
-    godot_print!("---------------------------------"); 
+    godot_print!("---------------------------------");
     godot_print!("hello, world. -- in NormalSystem1");
 
     // to_instantiate.list.push(ToInstantiate {
@@ -163,7 +163,7 @@ pub fn system2() {
 // 3. 고돗에서 생성리스트에 대해 생성 수행 후 엔티티 생성 상태 변경.
 // 4. 시스템2(기능수행)에서 (엔티티, 컴포넌트1) 번들 쿼리.
 // 5. 시스템2에서 쿼리된 엔티티의 생성 상태 조회 후, 생성 완료면 기능 수행.
-// 
+//
 // -트리거 입력시 총알 생성 / () : 번들 / [] : 시스템
 // 일반
 // [트리거 버튼 ON] > [ (리소스 패스, 엔티티, ToInstantiate) 생성예약 > (AddForce) 추가] > [AddForcing 수행]
@@ -177,37 +177,33 @@ pub fn system2() {
 // -.혹은 엔티티에 실행할 시스템들을 리스트로 가지는 컴포넌트를 붙임. 한 시스템이 (SystemList) 컴포넌트의 리스트의 각 시스템의 단계 이동 및 컴포넌트 Attach/Del을 수행
 // ->시스템으로 직접 에디팅. 하지만 병렬 수행 가능으로 봄.
 // [트리거버튼 ON] 블록 놓기 > [(리소스 패스, 엔티티, ToInstantiate) 생성예약] 블록 놓기 > 블록에서 선 뽑아내어 entity 받아옴 >
-// 받아온 엔티티에 (AddForce) 붙여줌 > 
+// 받아온 엔티티에 (AddForce) 붙여줌 >
 
-//걸어놓은 특정 조건을 만족하면, 그때 해당 컴포넌트를 엔티티에 붙여 맞는 시스템이 작동하도록 함 
-struct ToBeAddComponent{
-    component: dyn Component
+//걸어놓은 특정 조건을 만족하면, 그때 해당 컴포넌트를 엔티티에 붙여 맞는 시스템이 작동하도록 함
+struct ToBeAddComponent {
+    component: dyn Component,
 }
-//걸어놓은 특정 조건을 만족하면, 그때 해당 컴포넌트를 엔티티에서 제거하여 시스템이 중지하도록 함 
-struct  ToBeDelComponent{
-    component: dyn Component
-}
-
-fn system_addcomponent(){
-    
+//걸어놓은 특정 조건을 만족하면, 그때 해당 컴포넌트를 엔티티에서 제거하여 시스템이 중지하도록 함
+struct ToBeDelComponent {
+    component: dyn Component,
 }
 
-fn system_delcomponent(){
-    
-}
+fn system_addcomponent() {}
 
-//IF 문 
+fn system_delcomponent() {}
+
+//IF 문
 //1. 커넥터 타입
 // : fn system_if(compare_arg: Enum_Compare, target_a, target_b, if_component){
 //     match compare_arg{
-//      greater => 
+//      greater =>
 //      smaller =>
-//      equal => 
+//      equal =>
 //     }
 // }
 
 //2. 직접 컴포넌트 에디팅 타입
-//3. 수행 시스템 리스트를 통한 시스템 제어 타입 
+//3. 수행 시스템 리스트를 통한 시스템 제어 타입
 
 fn call_spawn(
     mut commands: &mut Commands,
@@ -216,12 +212,11 @@ fn call_spawn(
     name: &'static str,
     mut list_to_instantiate: &mut ResMut<ListToInstantiate>,
 ) -> Entity {
-    let entity = commands
-        .spawn()
-        .id();
+    let entity = commands.spawn().id();
     commands.insert_one(InstantiateProgress {
-        next: false, value: entity
-        });
+        next: false,
+        value: entity,
+    });
 
     list_to_instantiate.list.push(ToInstantiate {
         entity,
@@ -235,7 +230,7 @@ fn call_spawn(
 
 fn call_do_instantiated_entity(mut query: &Query<(Entity, &InstantiateProgress)>) {}
 
-fn test(){
+fn test() {
     let mut registry = TypeRegistry::default();
     registry.register::<u32>();
     registry.register::<isize>();

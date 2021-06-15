@@ -1,8 +1,8 @@
 use gdnative::prelude::*;
 
 mod processor;
-mod systems;
 mod structs;
+mod systems;
 
 fn start(handle: InitHandle) {
     handle.add_class::<processor::HelloWorld>();
