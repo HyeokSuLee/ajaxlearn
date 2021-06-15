@@ -12,6 +12,11 @@ pub struct Delta {
     pub value: f64,
 }
 
+//instantiate progress
+pub enum Progress {
+    Stanby,
+    Done,
+}
 // struct Resource_ON(bool);
 
 //--------------------------------------------------------------------
@@ -46,7 +51,7 @@ enum Part {
 
 //this is component for checking whether it is instantiated or not
 pub struct InstantiateProgress {
-    pub(crate) next: bool,
+    pub progress: Progress,
     pub value: Entity,
 }
 
@@ -64,8 +69,3 @@ pub struct ListToInstantiate {
 }
 
 //--------------------------movement----------------------------------
-
-pub struct MoveRight {
-    pub next: bool,
-    pub value: Box<dyn Any>,
-}

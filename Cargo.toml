@@ -17,4 +17,4 @@ serde = "*"
 ron = "*"
 anyhow = "*"
 
-bevy_rapier3d = "0.8.0"
+bevy_rapier3d = "0.10.2"

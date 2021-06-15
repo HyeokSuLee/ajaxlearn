@@ -179,32 +179,6 @@ pub fn system2() {
 // [트리거버튼 ON] 블록 놓기 > [(리소스 패스, 엔티티, ToInstantiate) 생성예약] 블록 놓기 > 블록에서 선 뽑아내어 entity 받아옴 >
 // 받아온 엔티티에 (AddForce) 붙여줌 >
 
-//걸어놓은 특정 조건을 만족하면, 그때 해당 컴포넌트를 엔티티에 붙여 맞는 시스템이 작동하도록 함
-struct ToBeAddComponent {
-    component: dyn Component,
-}
-//걸어놓은 특정 조건을 만족하면, 그때 해당 컴포넌트를 엔티티에서 제거하여 시스템이 중지하도록 함
-struct ToBeDelComponent {
-    component: dyn Component,
-}
-
-fn system_addcomponent() {}
-
-fn system_delcomponent() {}
-
-//IF 문
-//1. 커넥터 타입
-// : fn system_if(compare_arg: Enum_Compare, target_a, target_b, if_component){
-//     match compare_arg{
-//      greater =>
-//      smaller =>
-//      equal =>
-//     }
-// }
-
-//2. 직접 컴포넌트 에디팅 타입
-//3. 수행 시스템 리스트를 통한 시스템 제어 타입
-
 fn call_spawn(
     mut commands: &mut Commands,
     source_path: &'static str,
@@ -213,8 +187,9 @@ fn call_spawn(
     mut list_to_instantiate: &mut ResMut<ListToInstantiate>,
 ) -> Entity {
     let entity = commands.spawn().id();
-    commands.insert_one(InstantiateProgress {
-        next: false,
+
+    commands.entity(entity).insert(InstantiateProgress {
+        progress: Progress::Stanby,
         value: entity,
     });
 
@@ -230,7 +205,7 @@ fn call_spawn(
 
 fn call_do_instantiated_entity(mut query: &Query<(Entity, &InstantiateProgress)>) {}
 
-fn test() {
+/* fn test() {
     let mut registry = TypeRegistry::default();
     registry.register::<u32>();
     registry.register::<isize>();
@@ -241,4 +216,4 @@ fn test() {
     registry.register::<i32>();
 
     let serializer = ReflectSerializer::new(&foo, &registry);
-}
+} */
