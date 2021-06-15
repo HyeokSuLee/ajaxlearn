@@ -1,2 +1,2 @@
 ﻿[build]
-target-dir = "../godot_rust_project/rust_build"
+target-dir = "../part_godot/rust_build"
