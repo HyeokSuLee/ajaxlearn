@@ -2,7 +2,8 @@
 use gdnative::prelude::*;
 
 use crate::structs::*;
-use bevy::ecs::component::Component;
+use bevy::utils::{HashMap, Uuid};
+use std::any::{Any, TypeId};
 
 pub fn start_up_system(mut command: Commands, mut to_instantiate: ResMut<ListToInstantiate>) {
     godot_print!("hello, world. -- in StartupSystem");
@@ -217,3 +218,450 @@ fn call_do_instantiated_entity(mut query: &Query<(Entity, &InstantiateProgress)>
 
     let serializer = ReflectSerializer::new(&foo, &registry);
 } */
+
+//-------------------------------------node base system----------------------------------------------
+struct Connector {
+    ex_nodes_id_done: HashMap<Uuid, bool>,
+    now_node_id: Uuid,
+    next_node_types_ids: HashMap<TypeId, Vec<Uuid>>,
+    input_type: Option<TypeId>,
+    input1_entity: Option<Entity>,
+    input2_entity: Option<Entity>,
+    output_value_entity_type: Option<(Entity, TypeId)>,
+}
+
+pub struct Connectors {
+    hashmap: HashMap<TypeId, Vec<Connector>>,
+}
+#[derive(Debug)]
+pub struct Calc {
+    operation: ArithmeticOperation,
+}
+#[derive(Default)]
+struct Data<T> {
+    values: HashMap<Uuid, Option<T>>,
+}
+
+#[derive(Default)]
+pub struct Datas {
+    bool: Option<bool>,
+    i32: Option<i32>,
+    f32: Option<f32>,
+    vector3: Option<Vec3>,
+    string: Option<String>,
+}
+
+struct Print;
+
+#[derive(Debug)]
+enum ArithmeticOperation {
+    ADD,
+    SUBTRACT,
+    MULTIPLY,
+    DIVIDE,
+}
+
+pub fn setup_lerp(mut commands: Commands) {
+    for i in 0..10000 {
+        //---------------------------------------
+        //Create Node UUID **node == job
+        //---------------------------------------
+        //make node
+        let id_node_add = Uuid::new_v4();
+        let id_node_subtract = Uuid::new_v4();
+        let id_node_multiply = Uuid::new_v4();
+        let id_node_print = Uuid::new_v4();
+
+        //make data bank slot
+        let id_value_a = Uuid::new_v4();
+        let id_value_b = Uuid::new_v4();
+        let id_value_t = Uuid::new_v4();
+        let id_value_subtract_out = Uuid::new_v4();
+        let id_value_add_out = Uuid::new_v4();
+        let id_value_multiply_out = Uuid::new_v4();
+
+        //---------------------------------------
+        //Create Connector
+        //---------------------------------------
+        /*
+
+         a      a      t
+          \      \      \
+        b -- sub -- add -- mul
+
+        */
+        //make node connect
+        let mut connector_add = Connector {
+            ex_nodes_id_done: [(id_node_subtract, false)].iter().cloned().collect(),
+            now_node_id: id_node_add,
+            next_node_types_ids: {
+                let mut hash = HashMap::default();
+                hash.insert(TypeId::of::<Calc>(), vec![id_node_multiply]);
+                hash
+            },
+            input_type: None,
+            input1_entity: None,
+            input2_entity: None,
+            output_value_entity_type: None,
+        };
+
+        let mut connector_subtract = Connector {
+            ex_nodes_id_done: {
+                let mut hash: HashMap<Uuid, bool> = HashMap::default();
+                hash.insert(id_value_a, true);
+                hash.insert(id_value_b, true);
+                hash
+            },
+            now_node_id: id_node_subtract,
+            next_node_types_ids: [(TypeId::of::<Calc>(), vec![id_node_add])]
+                .iter()
+                .cloned()
+                .collect(),
+            input_type: None,
+            input1_entity: None,
+            input2_entity: None,
+            output_value_entity_type: None,
+        };
+
+        let mut connector_multiply = Connector {
+            ex_nodes_id_done: [(id_node_add, false)].iter().cloned().collect(),
+            now_node_id: id_node_multiply,
+            next_node_types_ids: [(TypeId::of::<Calc>(), vec![id_node_print])]
+                .iter()
+                .cloned()
+                .collect(),
+            input_type: None,
+            input1_entity: None,
+            input2_entity: None,
+            output_value_entity_type: None,
+        };
+
+        let mut connector_print = Connector {
+            ex_nodes_id_done: [(id_node_multiply, false)].iter().cloned().collect(),
+            now_node_id: id_node_multiply,
+            next_node_types_ids: HashMap::default(),
+            input_type: None,
+            input1_entity: None,
+            input2_entity: None,
+            output_value_entity_type: None,
+        };
+        //---------------------------------------
+        //Create Data<T> Hashmap
+        //---------------------------------------
+        /*  let mut data_value_a = Data::<f32> {
+            values: [(id_value_a, Some(100.))].iter().cloned().collect(),
+        };
+
+        let mut data_value_b = Data::<f32> {
+            values: [(id_value_b, Some(0.))].iter().cloned().collect(),
+        };
+
+        let mut data_value_t = Data::<f32> {
+            values: [(id_value_t, Some(0.4))].iter().cloned().collect(),
+        };
+        let mut data_value_subtract_out = Data::<f32> {
+            values: [(id_value_subtract_out, None)].iter().cloned().collect(),
+        };
+        let mut data_value_add_out = Data::<f32> {
+            values: [(id_value_add_out, None)].iter().cloned().collect(),
+        };
+        let mut data_value_multiply_out = Data::<f32> {
+            values: [(id_value_multiply_out, None)].iter().cloned().collect(),
+        }; */
+
+        let mut data_value_a = Some(100.);
+        let mut data_value_b = Some(0.);
+        let mut data_value_t = Some(0.4);
+        let mut data_value_subtract_out = None;
+        let mut data_value_add_out = None;
+        let mut data_value_multiply_out = None;
+
+        //---------------------------------------
+        //Create Entity ( value )
+        //---------------------------------------
+        //Values
+        let entity_value_a = commands
+            .spawn()
+            .insert(Datas {
+                f32: data_value_a,
+                ..Default::default()
+            })
+            .id();
+
+        let entity_value_b = commands
+            .spawn()
+            .insert(Datas {
+                f32: data_value_b,
+                ..Default::default()
+            })
+            .id();
+
+        let entity_value_t = commands
+            .spawn()
+            .insert(Datas {
+                f32: data_value_t,
+                ..Default::default()
+            })
+            .id();
+
+        let entity_value_add_out = commands
+            .spawn()
+            .insert(Datas {
+                f32: data_value_add_out,
+                ..Default::default()
+            })
+            .id();
+
+        let entity_value_subtract_out = commands
+            .spawn()
+            .insert(Datas {
+                f32: data_value_subtract_out,
+                ..Default::default()
+            })
+            .id();
+
+        let entity_value_multiply_out = commands
+            .spawn()
+            .insert(Datas {
+                f32: data_value_multiply_out,
+                ..Default::default()
+            })
+            .id();
+
+        //---------------------------------------
+        //Add input, output data ids to connector
+        //---------------------------------------
+        //Inputs_type
+        connector_add.input_type = Some(TypeId::of::<f32>());
+        connector_add.input_type = Some(TypeId::of::<f32>());
+        connector_subtract.input_type = Some(TypeId::of::<f32>());
+        connector_subtract.input_type = Some(TypeId::of::<f32>());
+        connector_multiply.input_type = Some(TypeId::of::<f32>());
+        connector_multiply.input_type = Some(TypeId::of::<f32>());
+        connector_print.input_type = Some(TypeId::of::<f32>());
+        //Inputs_entity
+        connector_add.input1_entity = Some(entity_value_a);
+        connector_add.input2_entity = Some(entity_value_subtract_out);
+        connector_subtract.input1_entity = Some(entity_value_b);
+        connector_subtract.input2_entity = Some(entity_value_a);
+        connector_multiply.input1_entity = Some(entity_value_add_out);
+        connector_multiply.input1_entity = Some(entity_value_t);
+        connector_print.input1_entity = Some(entity_value_multiply_out);
+
+        //Ouputs
+        connector_add.output_value_entity_type = Some((entity_value_add_out, TypeId::of::<f32>()));
+        connector_subtract.output_value_entity_type =
+            Some((entity_value_subtract_out, TypeId::of::<f32>()));
+        connector_multiply.output_value_entity_type =
+            Some((entity_value_multiply_out, TypeId::of::<f32>()));
+
+        //---------------------------------------
+        //Create Connectors hash and insert connector to each type
+        //---------------------------------------
+
+        let mut hash_add = HashMap::default();
+        hash_add.insert(TypeId::of::<Calc>(), vec![connector_add]);
+
+        let mut hash_sub = HashMap::default();
+        hash_sub.insert(TypeId::of::<Calc>(), vec![connector_subtract]);
+
+        let mut hash_mul = HashMap::default();
+        hash_mul.insert(TypeId::of::<Calc>(), vec![connector_multiply]);
+
+        //---------------------------------------
+        //Create Node( job )-Connectors Entity
+        //---------------------------------------
+        // think that calc{ Add } and Calc{ Sub } is diffrent tag. This concept is temporarly
+        commands
+            .spawn()
+            .insert(Connectors { hashmap: hash_add })
+            .insert(Calc {
+                operation: ArithmeticOperation::ADD,
+            });
+        commands
+            .spawn()
+            .insert(Connectors { hashmap: hash_sub })
+            .insert(Calc {
+                operation: ArithmeticOperation::SUBTRACT,
+            });
+        commands
+            .spawn()
+            .insert(Connectors { hashmap: hash_mul })
+            .insert(Calc {
+                operation: ArithmeticOperation::MULTIPLY,
+            });
+    }
+}
+
+use crate::{calc, node_job_basic, system_basic};
+
+pub fn calc_system(
+    mut commands: Commands,
+    mut query: Query<(&Calc, &mut Connectors)>,
+    mut query_datas: Query<&mut Datas>,
+) {
+    query.for_each_mut(|(node_tag, mut connectors)| {
+        system_basic!(node_tag, connectors, query_datas);
+    });
+}
+
+#[macro_export]
+macro_rules! system_basic {
+    ($tag:expr, $connectors:expr, $query_datas:expr) => {{
+        let mut passed_node_ids_nextnodetypes: HashMap<Uuid, Vec<TypeId>> = HashMap::default();
+        let mut list_connector = $connectors.hashmap.get(&$tag.type_id()).unwrap();
+        for connector in list_connector {
+            //---------------------------------------
+            //Check if node is ready to process
+            //---------------------------------------
+            let true_nodes_count = connector
+                .ex_nodes_id_done
+                .values()
+                .filter_map(|v| match v {
+                    true => Some(true),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .len();
+
+            // skip if not match
+            if connector.ex_nodes_id_done.len() != true_nodes_count {
+                continue;
+            }
+            //-------------------
+            //Node Job
+            //-----------------
+
+            //check whether it has value or not
+            let input1_entity = match connector.input1_entity {
+                Some(input_entity) => Some(input_entity),// if some, then return exactly.
+                None => continue,// if none, then don't have to do anything. So, skip.
+            };
+
+            let input2_entity = connector.input2_entity; // if input2 is none, it has to some node thing but not with input2. so return exactly same.
+
+            let outputs = connector.output_value_entity_type;
+
+            match connector.input_type {
+                Some(x) if x == TypeId::of::<i32>() => {
+                    node_job_basic!(
+                        $tag,
+                        $query_datas,
+                        [i32],
+                        input1_entity,
+                        input2_entity,
+                        outputs
+                    )
+                }
+                Some(x) if x == TypeId::of::<f32>() => {
+                    node_job_basic!(
+                        $tag,
+                        $query_datas,
+                        [f32],
+                        input1_entity,
+                        input2_entity,
+                        outputs
+                    )
+                }
+                _ => (),
+            }
+            //pass for next node
+            passed_node_ids_nextnodetypes.insert(
+                connector.now_node_id,
+                connector.next_node_types_ids.keys().cloned().collect(),
+            );
+        }
+        for passed_node_id in passed_node_ids_nextnodetypes.keys() {
+            let next_types = passed_node_ids_nextnodetypes.get(passed_node_id).unwrap();
+            for next_type in next_types {
+                let mut list_next_connector = $connectors.hashmap.get_mut(next_type).unwrap();
+                for mut next_connector in list_next_connector.iter_mut() {
+                    if let Some(mut ex_node_of_next_node) =
+                        next_connector.ex_nodes_id_done.get(passed_node_id)
+                    {
+                        //참조라 안된다. insert로 해쉬맵을 갱신해줘야함
+                        next_connector
+                            .ex_nodes_id_done
+                            .insert(passed_node_id.clone(), true);
+                        // println!("match: now_node & next's ex_node");
+                        ex_node_of_next_node = &true;
+                        // println!("ex_node_of_next_node new set :{}", ex_node_of_next_node);
+                    } else {
+                        continue;
+                    }
+                }
+            }
+        }
+    }};
+}
+
+#[macro_export]
+macro_rules! node_job_basic {
+    ( $tag:expr, $query_datas:expr, [$type_:ident],
+    $input1_entity:expr,
+    $input2_entity:expr,$output_data:expr) => {{
+        let mut input_1;
+        let mut input_2;
+
+        //get data from datas entity
+        //it is obious that input1_entity is not none
+        match $query_datas.get_mut($input1_entity.unwrap()) {
+            Ok(datas) => {
+                input_1 = datas.$type_;
+            }
+            _ => {
+                input_1 = None;
+            }
+        };
+
+        //it is suspicious that input2_entity has value. so check and get
+        if let Some(input2_entity) = $input2_entity {
+            match $query_datas.get_mut(input2_entity) {
+                Ok(datas) => {
+                    input_2 = datas.$type_;
+                }
+                _ => {
+                    input_2 = None;
+                    println!("input1_entity is exist but value is not");
+                }
+            };
+        } else {
+            input_2 = None;
+        }
+
+        let input1_unwrap;
+        let values_to_hand_over_1;
+        input1_unwrap = input_1.expect("input1_entity is exist but value is not");
+
+        //if value 2 is exist, then can do dual input function
+        if let Some(input2_unwrap) = input_2 {
+            values_to_hand_over_1 = match $tag.operation {
+                ArithmeticOperation::ADD => calc!(input1_unwrap + input2_unwrap),
+                ArithmeticOperation::SUBTRACT => calc!(input1_unwrap - input2_unwrap),
+                ArithmeticOperation::MULTIPLY => calc!(input1_unwrap * input2_unwrap),
+                ArithmeticOperation::DIVIDE => calc!(input1_unwrap / input2_unwrap),
+            };
+        }
+        //if value 2 is none, then can do solo input function
+        else {
+            values_to_hand_over_1 = None;
+        }
+
+        match $output_data {
+            Some((entity, typeid)) => {
+                let mut datas = $query_datas.get_mut(entity).unwrap();
+                datas.$type_ = values_to_hand_over_1;
+            }
+            None => (),
+        }
+    }};
+}
+
+#[macro_export]
+macro_rules! calc {
+    ($e:expr) => {{
+        let val = $e;
+        // println!("{} = {}", stringify!{$e}, val)
+        Some(val)
+    }};
+}

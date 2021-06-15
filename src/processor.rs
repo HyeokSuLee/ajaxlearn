@@ -224,8 +224,8 @@ impl HelloWorld {
         // let mut list: Vec<ToInstantiate> = Vec::new();
         match to_instantiates {
             Some(mut to_instantiate) => {
-                godot_print!("to instantiate start");
-                godot_print!("length: {}", to_instantiate.list.len());
+                // godot_print!("to instantiate start");
+                // godot_print!("length: {}", to_instantiate.list.len());
                 // list.clone_from_slice(&to_instantiate.list[..]);
                 // list = to_instantiate.list.to_vec();
 
@@ -313,6 +313,11 @@ impl HelloWorld {
         */
         // godot_print!("hello, world.");
         // godot_print!("hello, world.")
+        godot_print!(
+            "{}",
+            gdnative::api::Performance::godot_singleton()
+                .get_monitor(gdnative::api::Performance::TIME_FPS)
+        );
     }
     #[export]
     fn _physics_process(&mut self, _owner: &gdnative::prelude::Spatial, delta: f64) {}
@@ -382,8 +387,12 @@ impl Process {
         // app_builder.add_asset::<ToInstantiate>();1
         // app_builder.insert_resource(Resource_ON(false));
         app_builder.add_startup_system(start_up_system.system());
-        app_builder.add_system(normal_system.system());
-        app_builder.add_system(system2.system());
+        // app_builder.add_system(normal_system.system());
+        // app_builder.add_system(system2.system());
+
+        //node base system
+        app_builder.add_startup_system(setup_lerp.system());
+        app_builder.add_system(calc_system.system());
 
         Process { app_builder }
     }
