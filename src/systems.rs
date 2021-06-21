@@ -220,40 +220,108 @@ fn call_do_instantiated_entity(mut query: &Query<(Entity, &InstantiateProgress)>
 } */
 
 //-------------------------------------node base system----------------------------------------------
-struct Connector {
-    ex_nodes_id_done: HashMap<Uuid, bool>,
-    now_node_id: Uuid,
-    next_node_types_ids: HashMap<TypeId, Vec<Uuid>>,
-    input_type: Option<TypeId>,
-    input1_entity: Option<Entity>,
-    input2_entity: Option<Entity>,
-    output_value_entity_type: Option<(Entity, TypeId)>,
+use crate::{calc, calc_job, check_and_get_value, make_tag};
+use paste::paste;
+pub struct OutCheck {
+    node_done: bool,
 }
 
-pub struct Connectors {
-    hashmap: HashMap<TypeId, Vec<Connector>>,
+/// put specific value and input value as much you want. if it has output value, then just insert '_'.
+/// Example (has output): make_tag!(Calc, [SPEC] operation: ArithmeticOperation , [IN] a, [IN] b, [OUT] _);
+/// Example (no output): make_tag!(Calc, [SPEC] operation: ArithmeticOperation , [IN] a, [IN] b);
+/// Example (no output, no spec): make_tag!(Calc, , [IN] a, [IN] b);
+#[macro_export]
+macro_rules! make_tag {
+    ($struct_name:ident, $([SPEC] $tag_specific_value: ident : $ty:ty),* ,  $([IN] $input_abc: ident),*, $([OUT] $has_output: tt),*) => {
+         paste! {
+            pub struct $struct_name {
+            input_type:Option<TypeId>,
+            $($tag_specific_value: $ty,)*
+
+                $(
+                    [<input_ $input_abc _entity>]: Option<Entity>,
+                    [<input_ $input_abc _outcheck_entity>]: Option<Entity>,
+                )*
+                $(
+                    [<output $has_output entity>] :Option<Entity>,
+                    [<output $has_output outcheck_entity>]  : Option<Entity>,
+                )*
+            }
+        }
+    }
+}
+
+make_tag!(Calc, [SPEC] operation: ArithmeticOperation , [IN] a, [IN] b, [OUT] _);
+make_tag!(Copy, , [IN] a, [OUT]_);
+make_tag!(Print, , [IN] a,);
+
+// struct Calc {
+//     operation: ArithmeticOperation,
+//     input_type: Option<TypeId>,
+//     input_a_entity: Option<Entity>,
+//     input_a_outcheck_entity: Option<Entity>,
+//     input_b_entity: Option<Entity>,
+//     input_b_outcheck_entity: Option<Entity>,
+//     output_entity: Option<Entity>, // no type cause it is same with input
+//     output_outcheck_entity: Option<Entity>, // no type cause it is same with input
+// }
+//TODO: Move를 만들지 말지 나중에 결정. 포인터와 같이 되어, 나중에 null포인터와 같은 오류가 생길 가능성이 있음.
+//      물론 에디터로 방지해도 되지만, 굳이 move가 필요한가 고민. move를 과연 어디에 쓸 것인가.
+#[derive(Debug)]
+struct Move {
+    input_type: Option<TypeId>,
+    input_a_entity: Option<Entity>,
+    input_a_outcheck_entity: Option<Entity>,
+    output_entity: Option<Entity>,
+    output_outcheck_entity: Option<Entity>, // no type cause it is same with input
 }
 #[derive(Debug)]
-pub struct Calc {
-    operation: ArithmeticOperation,
+struct Make {
+    input_type: Option<TypeId>,
+    input_a_entity: Option<Entity>,
+    input_a_outcheck_entity: Option<Entity>,
+    output_entity: Option<Entity>,
+    output_outcheck_entity: Option<Entity>, // no type cause it is same with input
 }
-#[derive(Default)]
-struct Data<T> {
-    values: HashMap<Uuid, Option<T>>,
-}
+// struct Copy {
+//     input_type: Option<TypeId>,
+//     input_a_entity: Option<Entity>,
+//     input_a_outcheck_entity: Option<Entity>,
+//     output_entity: Option<Entity>,
+//     output_outcheck_entity: Option<Entity>, // no type cause it is same with input
+// }
+// struct Print {
+//     input_type: Option<TypeId>,
+//     input_a_entity: Option<Entity>,
+//     input_a_outcheck_entity: Option<Entity>,
+// }
+
+//TODO ------------------------------<<<<<<
+
+//글로벌 데이터는 오브젝트 간에.
+//로컬 데이터는 엔티티 내부
+//TODO: 전반적으로 사칙연산 방식으로 사용함에 따른 최적화가 필요. 군더더기가 너무 많다.
+//TODO: 사칙연산 방식에서 데이터 밸류는 1개 값만 가지므로, 해쉬맵을 쓸 이유가 없음. 단일 값으로 바꾸기.
+//TODO: 전부 Calc 태그를 사용하므로 아웃풋 밸류 중에 타입id가 필요 없다.
+//TODO: 병목 현상 발생시에 방안 1. calc_system을 parrarell하게 바꾸기. 2. calc_system을 4개의 시스템으로 쪼개기( add, sub, mul, div)
+//TODO: 기초 시스템
+// - 사칙연산
+// - 블록(노드 연결구조) 로드, 세이브
+// - 데이터 할당, 이동, 복사, 삭제
+// - 해쉬노드/벡터노드 , 가져오기, 입력하기
+//TODO: 매크로로 중복되는 부분들 모듈화. 코드에 표식 넣음.
+//TODO: datas 말고 단일 데이터로 만들기
+//TODO: remove_completed_nodes_system 만들기. 이유 : 메모리를 무한대로 잡아먹을 우려가있다.
 
 #[derive(Default)]
 pub struct Datas {
     bool: Option<bool>,
     i32: Option<i32>,
     f32: Option<f32>,
-    vector3: Option<Vec3>,
-    string: Option<String>,
+    // vector3: Option<Vec3>,
+    // string: Option<String>,
 }
 
-struct Print;
-
-#[derive(Debug)]
 enum ArithmeticOperation {
     ADD,
     SUBTRACT,
@@ -262,7 +330,7 @@ enum ArithmeticOperation {
 }
 
 pub fn setup_lerp(mut commands: Commands) {
-    for i in 0..10000 {
+    for i in 0..30000 {
         //---------------------------------------
         //Create Node UUID **node == job
         //---------------------------------------
@@ -270,6 +338,7 @@ pub fn setup_lerp(mut commands: Commands) {
         let id_node_add = Uuid::new_v4();
         let id_node_subtract = Uuid::new_v4();
         let id_node_multiply = Uuid::new_v4();
+        let id_node_copy = Uuid::new_v4();
         let id_node_print = Uuid::new_v4();
 
         //make data bank slot
@@ -279,7 +348,7 @@ pub fn setup_lerp(mut commands: Commands) {
         let id_value_subtract_out = Uuid::new_v4();
         let id_value_add_out = Uuid::new_v4();
         let id_value_multiply_out = Uuid::new_v4();
-
+        let id_value_copied_out = Uuid::new_v4();
         //---------------------------------------
         //Create Connector
         //---------------------------------------
@@ -290,92 +359,13 @@ pub fn setup_lerp(mut commands: Commands) {
         b -- sub -- add -- mul
 
         */
-        //make node connect
-        let mut connector_add = Connector {
-            ex_nodes_id_done: [(id_node_subtract, false)].iter().cloned().collect(),
-            now_node_id: id_node_add,
-            next_node_types_ids: {
-                let mut hash = HashMap::default();
-                hash.insert(TypeId::of::<Calc>(), vec![id_node_multiply]);
-                hash
-            },
-            input_type: None,
-            input1_entity: None,
-            input2_entity: None,
-            output_value_entity_type: None,
-        };
-
-        let mut connector_subtract = Connector {
-            ex_nodes_id_done: {
-                let mut hash: HashMap<Uuid, bool> = HashMap::default();
-                hash.insert(id_value_a, true);
-                hash.insert(id_value_b, true);
-                hash
-            },
-            now_node_id: id_node_subtract,
-            next_node_types_ids: [(TypeId::of::<Calc>(), vec![id_node_add])]
-                .iter()
-                .cloned()
-                .collect(),
-            input_type: None,
-            input1_entity: None,
-            input2_entity: None,
-            output_value_entity_type: None,
-        };
-
-        let mut connector_multiply = Connector {
-            ex_nodes_id_done: [(id_node_add, false)].iter().cloned().collect(),
-            now_node_id: id_node_multiply,
-            next_node_types_ids: [(TypeId::of::<Calc>(), vec![id_node_print])]
-                .iter()
-                .cloned()
-                .collect(),
-            input_type: None,
-            input1_entity: None,
-            input2_entity: None,
-            output_value_entity_type: None,
-        };
-
-        let mut connector_print = Connector {
-            ex_nodes_id_done: [(id_node_multiply, false)].iter().cloned().collect(),
-            now_node_id: id_node_multiply,
-            next_node_types_ids: HashMap::default(),
-            input_type: None,
-            input1_entity: None,
-            input2_entity: None,
-            output_value_entity_type: None,
-        };
-        //---------------------------------------
-        //Create Data<T> Hashmap
-        //---------------------------------------
-        /*  let mut data_value_a = Data::<f32> {
-            values: [(id_value_a, Some(100.))].iter().cloned().collect(),
-        };
-
-        let mut data_value_b = Data::<f32> {
-            values: [(id_value_b, Some(0.))].iter().cloned().collect(),
-        };
-
-        let mut data_value_t = Data::<f32> {
-            values: [(id_value_t, Some(0.4))].iter().cloned().collect(),
-        };
-        let mut data_value_subtract_out = Data::<f32> {
-            values: [(id_value_subtract_out, None)].iter().cloned().collect(),
-        };
-        let mut data_value_add_out = Data::<f32> {
-            values: [(id_value_add_out, None)].iter().cloned().collect(),
-        };
-        let mut data_value_multiply_out = Data::<f32> {
-            values: [(id_value_multiply_out, None)].iter().cloned().collect(),
-        }; */
-
-        let mut data_value_a = Some(100.);
-        let mut data_value_b = Some(0.);
-        let mut data_value_t = Some(0.4);
-        let mut data_value_subtract_out = None;
-        let mut data_value_add_out = None;
-        let mut data_value_multiply_out = None;
-
+        let data_value_a = Some(0.);
+        let data_value_b = Some(100.);
+        let data_value_t = Some(0.4);
+        let data_value_subtract_out = None;
+        let data_value_add_out = None;
+        let data_value_multiply_out = None;
+        let data_value_copied_out = None;
         //---------------------------------------
         //Create Entity ( value )
         //---------------------------------------
@@ -387,6 +377,7 @@ pub fn setup_lerp(mut commands: Commands) {
                 ..Default::default()
             })
             .id();
+        let entity_value_a_outcheck = commands.spawn().insert(OutCheck { node_done: true }).id();
 
         let entity_value_b = commands
             .spawn()
@@ -395,6 +386,7 @@ pub fn setup_lerp(mut commands: Commands) {
                 ..Default::default()
             })
             .id();
+        let entity_value_b_outcheck = commands.spawn().insert(OutCheck { node_done: true }).id();
 
         let entity_value_t = commands
             .spawn()
@@ -403,6 +395,7 @@ pub fn setup_lerp(mut commands: Commands) {
                 ..Default::default()
             })
             .id();
+        let entity_value_t_outcheck = commands.spawn().insert(OutCheck { node_done: true }).id();
 
         let entity_value_add_out = commands
             .spawn()
@@ -411,6 +404,8 @@ pub fn setup_lerp(mut commands: Commands) {
                 ..Default::default()
             })
             .id();
+        let entity_value_add_out_outcheck =
+            commands.spawn().insert(OutCheck { node_done: false }).id();
 
         let entity_value_subtract_out = commands
             .spawn()
@@ -419,6 +414,8 @@ pub fn setup_lerp(mut commands: Commands) {
                 ..Default::default()
             })
             .id();
+        let entity_value_subtract_out_outcheck =
+            commands.spawn().insert(OutCheck { node_done: false }).id();
 
         let entity_value_multiply_out = commands
             .spawn()
@@ -427,233 +424,234 @@ pub fn setup_lerp(mut commands: Commands) {
                 ..Default::default()
             })
             .id();
+        let entity_value_multiply_out_outcheck =
+            commands.spawn().insert(OutCheck { node_done: false }).id();
+
+        let entity_value_copied_out = commands
+            .spawn()
+            .insert(Datas {
+                f32: data_value_copied_out,
+                ..Default::default()
+            })
+            .id();
+        let entity_value_copied_out_outcheck =
+            commands.spawn().insert(OutCheck { node_done: false }).id();
 
         //---------------------------------------
         //Add input, output data ids to connector
         //---------------------------------------
+        let mut calc_add = Calc {
+            operation: ArithmeticOperation::ADD,
+            input_type: None,
+            input_a_entity: None,
+            input_a_outcheck_entity: None,
+            input_b_entity: None,
+            input_b_outcheck_entity: None,
+            output_entity: None,
+            output_outcheck_entity: None,
+        };
+
+        let mut calc_sub = Calc {
+            operation: ArithmeticOperation::SUBTRACT,
+            input_type: None,
+            input_a_entity: None,
+            input_a_outcheck_entity: None,
+            input_b_entity: None,
+            input_b_outcheck_entity: None,
+            output_entity: None,
+            output_outcheck_entity: None,
+        };
+
+        let mut calc_mul = Calc {
+            operation: ArithmeticOperation::MULTIPLY,
+            input_type: None,
+            input_a_entity: None,
+            input_a_outcheck_entity: None,
+            input_b_entity: None,
+            input_b_outcheck_entity: None,
+            output_entity: None,
+            output_outcheck_entity: None,
+        };
+
+        let mut copy = Copy {
+            input_type: None,
+            input_a_entity: None,
+            input_a_outcheck_entity: None,
+            output_entity: None,
+            output_outcheck_entity: None,
+        };
+
+        let mut print = Print {
+            input_type: None,
+            input_a_entity: None,
+            input_a_outcheck_entity: None,
+        };
+
         //Inputs_type
-        connector_add.input_type = Some(TypeId::of::<f32>());
-        connector_add.input_type = Some(TypeId::of::<f32>());
-        connector_subtract.input_type = Some(TypeId::of::<f32>());
-        connector_subtract.input_type = Some(TypeId::of::<f32>());
-        connector_multiply.input_type = Some(TypeId::of::<f32>());
-        connector_multiply.input_type = Some(TypeId::of::<f32>());
-        connector_print.input_type = Some(TypeId::of::<f32>());
+        calc_add.input_type = Some(TypeId::of::<f32>());
+        calc_sub.input_type = Some(TypeId::of::<f32>());
+        calc_mul.input_type = Some(TypeId::of::<f32>());
+        copy.input_type = Some(TypeId::of::<f32>());
+        print.input_type = Some(TypeId::of::<f32>());
+
         //Inputs_entity
-        connector_add.input1_entity = Some(entity_value_a);
-        connector_add.input2_entity = Some(entity_value_subtract_out);
-        connector_subtract.input1_entity = Some(entity_value_b);
-        connector_subtract.input2_entity = Some(entity_value_a);
-        connector_multiply.input1_entity = Some(entity_value_add_out);
-        connector_multiply.input1_entity = Some(entity_value_t);
-        connector_print.input1_entity = Some(entity_value_multiply_out);
-
+        calc_add.input_a_entity = Some(entity_value_a);
+        calc_add.input_a_outcheck_entity = Some(entity_value_a_outcheck);
+        calc_add.input_b_entity = Some(entity_value_subtract_out);
+        calc_add.input_b_outcheck_entity = Some(entity_value_subtract_out_outcheck);
+        calc_sub.input_a_entity = Some(entity_value_b);
+        calc_sub.input_a_outcheck_entity = Some(entity_value_b_outcheck);
+        calc_sub.input_b_entity = Some(entity_value_a);
+        calc_sub.input_b_outcheck_entity = Some(entity_value_a_outcheck);
+        calc_mul.input_a_entity = Some(entity_value_add_out);
+        calc_mul.input_a_outcheck_entity = Some(entity_value_add_out_outcheck);
+        calc_mul.input_b_entity = Some(entity_value_t);
+        calc_mul.input_b_outcheck_entity = Some(entity_value_t_outcheck);
+        copy.input_a_entity = Some(entity_value_multiply_out);
+        copy.input_a_outcheck_entity = Some(entity_value_multiply_out_outcheck);
+        print.input_a_entity = Some(entity_value_copied_out);
+        print.input_a_outcheck_entity = Some(entity_value_copied_out_outcheck);
         //Ouputs
-        connector_add.output_value_entity_type = Some((entity_value_add_out, TypeId::of::<f32>()));
-        connector_subtract.output_value_entity_type =
-            Some((entity_value_subtract_out, TypeId::of::<f32>()));
-        connector_multiply.output_value_entity_type =
-            Some((entity_value_multiply_out, TypeId::of::<f32>()));
-
-        //---------------------------------------
-        //Create Connectors hash and insert connector to each type
-        //---------------------------------------
-
-        let mut hash_add = HashMap::default();
-        hash_add.insert(TypeId::of::<Calc>(), vec![connector_add]);
-
-        let mut hash_sub = HashMap::default();
-        hash_sub.insert(TypeId::of::<Calc>(), vec![connector_subtract]);
-
-        let mut hash_mul = HashMap::default();
-        hash_mul.insert(TypeId::of::<Calc>(), vec![connector_multiply]);
+        calc_add.output_entity = Some(entity_value_add_out);
+        calc_add.output_outcheck_entity = Some(entity_value_add_out_outcheck);
+        calc_sub.output_entity = Some(entity_value_subtract_out);
+        calc_sub.output_outcheck_entity = Some(entity_value_subtract_out_outcheck);
+        calc_mul.output_entity = Some(entity_value_multiply_out);
+        calc_mul.output_outcheck_entity = Some(entity_value_multiply_out_outcheck);
+        copy.output_entity = Some(entity_value_copied_out);
+        copy.output_outcheck_entity = Some(entity_value_copied_out_outcheck);
 
         //---------------------------------------
         //Create Node( job )-Connectors Entity
         //---------------------------------------
         // think that calc{ Add } and Calc{ Sub } is diffrent tag. This concept is temporarly
-        commands
-            .spawn()
-            .insert(Connectors { hashmap: hash_add })
-            .insert(Calc {
-                operation: ArithmeticOperation::ADD,
-            });
-        commands
-            .spawn()
-            .insert(Connectors { hashmap: hash_sub })
-            .insert(Calc {
-                operation: ArithmeticOperation::SUBTRACT,
-            });
-        commands
-            .spawn()
-            .insert(Connectors { hashmap: hash_mul })
-            .insert(Calc {
-                operation: ArithmeticOperation::MULTIPLY,
-            });
+        commands.spawn().insert(calc_add);
+        commands.spawn().insert(calc_sub);
+        commands.spawn().insert(calc_mul);
+        commands.spawn().insert(copy);
+        commands.spawn().insert(print);
     }
 }
 
-use crate::{calc, node_job_basic, system_basic};
-
 pub fn calc_system(
     mut commands: Commands,
-    mut query: Query<(&Calc, &mut Connectors)>,
+    query: Query<&Calc>,
+    mut query_out: Query<&mut OutCheck>,
     mut query_datas: Query<&mut Datas>,
+    query_copy: Query<&Copy>,
+    query_print: Query<&Print>,
 ) {
-    query.for_each_mut(|(node_tag, mut connectors)| {
-        system_basic!(node_tag, connectors, query_datas);
+    query.for_each_mut(|mut calc| match calc.input_type {
+        Some(t) => match t {
+            a if a == TypeId::of::<i32>() => calc_job!(calc, query_out, query_datas, [i32]),
+            a if a == TypeId::of::<f32>() => calc_job!(calc, query_out, query_datas, [f32]),
+            _ => (),
+        },
+        None => (),
     });
+    // query_copy.for_each_mut(|copy| {
+    //     {
+    //         // println!("calc : {:?}", $calc.operation);
+    //         let mut now_outcheck = query_out
+    //             .get_mut(copy.output_outcheck_entity.unwrap())
+    //             .unwrap();
+
+    //         //if this node is already done
+    //         if now_outcheck.node_done {
+    //             // println!("this node is already done");
+    //             // return;
+    //         }
+    //     }
+    //     let mut input_1;
+    //     check_and_get_value!(
+    //         input_1,
+    //         copy.input_a_entity,
+    //         copy.input_a_outcheck_entity,
+    //         mut query_out,
+    //         query_datas,
+    //         f32
+    //     );
+
+    //     let values_to_hand_over = input_1;
+
+    //     let mut datas = query_datas.get_mut(copy.output_entity.unwrap()).unwrap();
+    //     datas.f32 = Some(values_to_hand_over);
+
+    //     let mut outcheck = query_out
+    //         .get_mut(copy.output_outcheck_entity.unwrap())
+    //         .unwrap();
+    //     outcheck.node_done = true;
+    // });
+    // query_print.for_each_mut(|print| {
+    //     let mut input_1;
+
+    //     check_and_get_value!(
+    //         input_1,
+    //         print.input_a_entity,
+    //         print.input_a_outcheck_entity,
+    //         mut query_out,
+    //         query_datas,
+    //         f32
+    //     );
+    //     // println!("print: {}", input_1);
+    // });
 }
-
 #[macro_export]
-macro_rules! system_basic {
-    ($tag:expr, $connectors:expr, $query_datas:expr) => {{
-        let mut passed_node_ids_nextnodetypes: HashMap<Uuid, Vec<TypeId>> = HashMap::default();
-        let mut list_connector = $connectors.hashmap.get(&$tag.type_id()).unwrap();
-        for connector in list_connector {
-            //---------------------------------------
-            //Check if node is ready to process
-            //---------------------------------------
-            let true_nodes_count = connector
-                .ex_nodes_id_done
-                .values()
-                .filter_map(|v| match v {
-                    true => Some(true),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .len();
-
-            // skip if not match
-            if connector.ex_nodes_id_done.len() != true_nodes_count {
-                continue;
-            }
-            //-------------------
-            //Node Job
-            //-----------------
-
-            //check whether it has value or not
-            let input1_entity = match connector.input1_entity {
-                Some(input_entity) => Some(input_entity),// if some, then return exactly.
-                None => continue,// if none, then don't have to do anything. So, skip.
-            };
-
-            let input2_entity = connector.input2_entity; // if input2 is none, it has to some node thing but not with input2. so return exactly same.
-
-            let outputs = connector.output_value_entity_type;
-
-            match connector.input_type {
-                Some(x) if x == TypeId::of::<i32>() => {
-                    node_job_basic!(
-                        $tag,
-                        $query_datas,
-                        [i32],
-                        input1_entity,
-                        input2_entity,
-                        outputs
-                    )
-                }
-                Some(x) if x == TypeId::of::<f32>() => {
-                    node_job_basic!(
-                        $tag,
-                        $query_datas,
-                        [f32],
-                        input1_entity,
-                        input2_entity,
-                        outputs
-                    )
-                }
-                _ => (),
-            }
-            //pass for next node
-            passed_node_ids_nextnodetypes.insert(
-                connector.now_node_id,
-                connector.next_node_types_ids.keys().cloned().collect(),
-            );
-        }
-        for passed_node_id in passed_node_ids_nextnodetypes.keys() {
-            let next_types = passed_node_ids_nextnodetypes.get(passed_node_id).unwrap();
-            for next_type in next_types {
-                let mut list_next_connector = $connectors.hashmap.get_mut(next_type).unwrap();
-                for mut next_connector in list_next_connector.iter_mut() {
-                    if let Some(mut ex_node_of_next_node) =
-                        next_connector.ex_nodes_id_done.get(passed_node_id)
-                    {
-                        //참조라 안된다. insert로 해쉬맵을 갱신해줘야함
-                        next_connector
-                            .ex_nodes_id_done
-                            .insert(passed_node_id.clone(), true);
-                        // println!("match: now_node & next's ex_node");
-                        ex_node_of_next_node = &true;
-                        // println!("ex_node_of_next_node new set :{}", ex_node_of_next_node);
-                    } else {
-                        continue;
-                    }
-                }
-            }
-        }
-    }};
-}
-
-#[macro_export]
-macro_rules! node_job_basic {
-    ( $tag:expr, $query_datas:expr, [$type_:ident],
-    $input1_entity:expr,
-    $input2_entity:expr,$output_data:expr) => {{
+macro_rules! calc_job {
+    ($calc:expr,$query_out:expr,$query_datas:expr, [$type_:ident]) => {{
         let mut input_1;
         let mut input_2;
+        //TODO: 모듈화 ( if 문 생각하기)------------------>>
+        {
+            // println!("calc : {:?}", $calc.operation);
+            let mut now_outcheck = $query_out
+                .get_mut($calc.output_outcheck_entity.unwrap())
+                .unwrap();
+
+            //if this node is already done
+            if now_outcheck.node_done {
+                // println!("this node is already done");
+                // return;
+            }
+        }
+        //TODO: 모듈화 ------------------<<
+
+        check_and_get_value!(
+            input_1,
+            $calc.input_a_entity,
+            $calc.input_a_outcheck_entity,
+            mut $query_out,
+            $query_datas,
+            $type_
+        );
 
         //get data from datas entity
-        //it is obious that input1_entity is not none
-        match $query_datas.get_mut($input1_entity.unwrap()) {
-            Ok(datas) => {
-                input_1 = datas.$type_;
-            }
-            _ => {
-                input_1 = None;
-            }
+        //check whether outcheck exist
+        check_and_get_value!(
+            input_2,
+            $calc.input_b_entity,
+            $calc.input_b_outcheck_entity,
+            mut $query_out,
+            $query_datas,
+            $type_
+        );
+        // println!("thers some value: {}, {}", input_1, input_2);
+
+        let values_to_hand_over;
+        values_to_hand_over = match $calc.operation {
+            ArithmeticOperation::ADD => calc!(input_1 + input_2),
+            ArithmeticOperation::SUBTRACT => calc!(input_1 - input_2),
+            ArithmeticOperation::MULTIPLY => calc!(input_1 * input_2),
+            ArithmeticOperation::DIVIDE => calc!(input_1 / input_2),
         };
 
-        //it is suspicious that input2_entity has value. so check and get
-        if let Some(input2_entity) = $input2_entity {
-            match $query_datas.get_mut(input2_entity) {
-                Ok(datas) => {
-                    input_2 = datas.$type_;
-                }
-                _ => {
-                    input_2 = None;
-                    println!("input1_entity is exist but value is not");
-                }
-            };
-        } else {
-            input_2 = None;
-        }
+        let mut datas = $query_datas.get_mut($calc.output_entity.unwrap()).unwrap();
+        datas.$type_ = values_to_hand_over;
 
-        let input1_unwrap;
-        let values_to_hand_over_1;
-        input1_unwrap = input_1.expect("input1_entity is exist but value is not");
-
-        //if value 2 is exist, then can do dual input function
-        if let Some(input2_unwrap) = input_2 {
-            values_to_hand_over_1 = match $tag.operation {
-                ArithmeticOperation::ADD => calc!(input1_unwrap + input2_unwrap),
-                ArithmeticOperation::SUBTRACT => calc!(input1_unwrap - input2_unwrap),
-                ArithmeticOperation::MULTIPLY => calc!(input1_unwrap * input2_unwrap),
-                ArithmeticOperation::DIVIDE => calc!(input1_unwrap / input2_unwrap),
-            };
-        }
-        //if value 2 is none, then can do solo input function
-        else {
-            values_to_hand_over_1 = None;
-        }
-
-        match $output_data {
-            Some((entity, typeid)) => {
-                let mut datas = $query_datas.get_mut(entity).unwrap();
-                datas.$type_ = values_to_hand_over_1;
-            }
-            None => (),
-        }
+        let mut outcheck = $query_out
+            .get_mut($calc.output_outcheck_entity.unwrap())
+            .unwrap();
+        outcheck.node_done = true;
     }};
 }
 
@@ -664,4 +662,112 @@ macro_rules! calc {
         // println!("{} = {}", stringify!{$e}, val)
         Some(val)
     }};
+}
+fn print_system(
+    mut commands: Commands,
+    query: Query<&Print>,
+    query_out: Query<&OutCheck>, // it doesn't need mutable. just for using macro
+    mut query_datas: Query<&mut Datas>,
+) {
+    query.for_each_mut(|print| {
+        let mut input_1;
+
+        check_and_get_value!(
+            input_1,
+            print.input_a_entity,
+            print.input_a_outcheck_entity,
+            query_out,
+            query_datas,
+            f32
+        );
+        // println!("print: {}", input_1);
+    });
+}
+fn copy_system(
+    mut commands: Commands,
+    query: Query<&Copy>,
+    mut query_out: Query<&mut OutCheck>, // it doesn't need mutable. just for using macro
+    mut query_datas: Query<&mut Datas>,
+) {
+    query.for_each_mut(|copy| {
+        {
+            // println!("calc : {:?}", $calc.operation);
+            let mut now_outcheck = query_out
+                .get_mut(copy.output_outcheck_entity.unwrap())
+                .unwrap();
+
+            //if this node is already done
+            if now_outcheck.node_done {
+                // println!("this node is already done");
+                // return;
+            }
+        }
+        let mut input_1;
+        check_and_get_value!(
+            input_1,
+            copy.input_a_entity,
+            copy.input_a_outcheck_entity,
+            mut query_out,
+            query_datas,
+            f32
+        );
+
+        let values_to_hand_over = input_1;
+
+        let mut datas = query_datas.get_mut(copy.output_entity.unwrap()).unwrap();
+        datas.f32 = Some(values_to_hand_over);
+
+        let mut outcheck = query_out
+            .get_mut(copy.output_outcheck_entity.unwrap())
+            .unwrap();
+        outcheck.node_done = true;
+    });
+}
+
+#[macro_export]
+macro_rules! check_and_get_value {
+    //mut
+    ($container_for_value:ident,$value_entity:expr, $value_outcheck_entity:expr,mut $query_out:expr, $query_datas:expr, $type_:ident) => {
+        //get data from datas entity
+        //check whether outcheck exist
+        if let Some(ex_out_check) = $query_out.get_mut($value_outcheck_entity.unwrap()).ok() {
+            $container_for_value = match ex_out_check.node_done {
+                true => $query_datas
+                    .get_mut($value_entity.unwrap())
+                    .unwrap()
+                    .$type_
+                    .unwrap(),
+                _ => {
+                    // error!("input_1 fail when get datas");
+                    return;
+                }
+            };
+        } else {
+            // if outcheck doesn't exist then return
+            // error!("input_1 fail when ex_outcheck done");
+            return;
+        }
+    };
+    // non mut
+    ($container_for_value:ident, $value_entity:expr, $value_outcheck_entity:expr, $query_out:expr, $query_datas:expr, $type_:ident) => {
+        //get data from datas entity
+        //check whether outcheck exist
+        if let Some(ex_out_check) = $query_out.get($value_outcheck_entity.unwrap()).ok() {
+            $container_for_value = match ex_out_check.node_done {
+                true => $query_datas
+                    .get_mut($value_entity.unwrap())
+                    .unwrap()
+                    .$type_
+                    .unwrap(),
+                _ => {
+                    // error!("input_1 fail when get datas");
+                    return;
+                }
+            };
+        } else {
+            // if outcheck doesn't exist then return
+            // error!("input_1 fail when ex_outcheck done");
+            return;
+        }
+    };
 }
