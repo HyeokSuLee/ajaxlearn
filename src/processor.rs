@@ -32,7 +32,7 @@ impl HelloWorld {
     #[export]
     fn _ready(&mut self, _owner: &gdnative::prelude::Spatial) {
         godot_print!("hello, world.");
-
+        //
         // let mut world = World::new();
         // self.process.app_builder.run();
 
